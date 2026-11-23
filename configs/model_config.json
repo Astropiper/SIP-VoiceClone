@@ -1,0 +1,24 @@
+{
+  "pretrain": {
+    "conv_channels": 128,
+    "dim": 256,
+    "layers": 6,
+    "heads": 4,
+    "ff_dim": 1024,
+    "teacher_layers": 4,
+    "dropout": 0.1
+  },
+  "train-mel": {
+    "width": 128,
+    "layers": 4
+  },
+  "train-text": {
+    "dim": 256,
+    "encoder_layers": 4,
+    "decoder_layers": 4,
+    "heads": 4,
+    "ff_dim": 1024,
+    "dropout": 0.1,
+    "stop_pos_weight": 5.0
+  }
+}

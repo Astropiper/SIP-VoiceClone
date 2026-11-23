@@ -1,0 +1,6 @@
+torch>=2.2
+torchaudio>=2.2
+soundfile>=0.12
+matplotlib>=3.7
+pypinyin>=0.55,<1
+vocos==0.1.0

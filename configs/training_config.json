@@ -1,0 +1,36 @@
+{
+  "common": {
+    "train_manifest": null,
+    "valid_manifest": null,
+    "output_dir": null,
+    "device": "auto",
+    "updates": 1000,
+    "batch_size": 4,
+    "accumulate": 1,
+    "lr": 0.0002,
+    "weight_decay": 0.01,
+    "seed": 0,
+    "workers": 0,
+    "log_every": 10,
+    "eval_every": 100,
+    "no_plot": false
+  },
+  "pretrain": {
+    "mask_fraction": 0.5,
+    "mask_span": 10,
+    "ema_decay": 0.999,
+    "variance_weight": 0.1,
+    "min_content_distance": 0.1,
+    "background_manifest": null,
+    "background_probability": 0.5,
+    "background_snr_db": [10.0, 20.0]
+  },
+  "train-mel": {
+    "encoder_checkpoint": null
+  },
+  "train-text": {
+    "encoder_checkpoint": null,
+    "generation_samples": 1,
+    "max_frames": 500
+  }
+}

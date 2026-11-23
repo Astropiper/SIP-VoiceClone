@@ -1,0 +1,6 @@
+funasr==1.3.14
+modelscope
+numpy
+onnxruntime
+torch
+torchaudio
