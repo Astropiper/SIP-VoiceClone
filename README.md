@@ -1,50 +1,4 @@
-# 从长录音筛选并转写已登记的说话人
-
-`speech_pipeline.py` 先用 FSMN-VAD 分段，再用 pyannote segmentation 3.0 判断每段有几个人说话。检测到两人轮流说话或同时说话时，整段跳过。剩余单人段用 CAM++ 提取声纹，与 JSON 声纹库比较，匹配成功才交给 SenseVoice 转写。推理在本机 CPU 上执行。
-
-## 环境和模型
-
-`hs` 已有 Python 依赖、FSMN-VAD、CAM++ 和 SenseVoice 权重。其他环境需要 Python 3.11、PATH 中的 FFmpeg，以及 `python -m pip install -r requirements.txt`。首次运行会从 ModelScope 获取本机缺少的 FunASR 权重。
-
-在本目录下载 [sherpa-onnx 的 pyannote segmentation 3.0 ONNX 权重](https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-segmentation-models)，再运行转写命令。
-
-```bash
-mkdir -p models
-curl -fL https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2 -o models/segmentation.tar.bz2
-tar -xjf models/segmentation.tar.bz2 -C models
-```
-
-若权重已存放在其他位置，可用 `--segmentation-model /path/to/model.onnx` 指定。
-
-## 登记声纹
-
-每份参考录音只包含其 ID 对应的说话人。可多次指定同一 ID 来登记不同录音。程序对每段至少 1 秒的参考语音提取一个向量。
-
-```bash
-conda run -n hs python speech_pipeline.py enroll \
-  --speaker speaker_01 reference_01.wav \
-  --speaker speaker_02 reference_02.wav \
-  --output voiceprints.json
-```
-
-已有声纹库时可跳过登记。JSON 顶层的 `model` 应为 `iic/speech_campplus_sv_zh-cn_16k-common`，`speakers` 对象的键为说话人 ID，值为该人的声纹向量列表。每个向量有 192 个数值，由同一 CAM++ 模型提取。
-
-## 转写
-
-```bash
-conda run -n hs --no-capture-output python speech_pipeline.py transcribe 长录音.m4a \
-  --voiceprints voiceprints.json \
-  --output result.json
-```
-
-输出 JSON 的 `segments` 记录每个 VAD 片段的原录音起止时间（毫秒）、检测人数、重叠时长和处理状态。只有 `status` 为 `transcribed` 的条目含 `speaker_id` 和 `text`。其余状态包括 `multiple_speakers`、`no_speaker`、`too_short`、`no_match` 和 `ambiguous_match`。
-
-- FSMN-VAD 每秒读取一块音频，连续语音约每 9 秒切段，使每个片段可以放入 pyannote 的 10 秒窗口。
-- pyannote 中累计活动不足 120 毫秒的说话人不计入人数。单人段检测到的有效语音达到 1 秒才进行声纹匹配。
-- 每位登记人的得分取其全部参考声纹中的最高余弦相似度。默认需达到 0.50，可用 `--match-threshold` 调整。前两名得分差小于 0.05 时跳过片段。
-- 默认自动识别语言。可用 `--language zh` 指定中文。
-
-## 单说话人 TTS 训练
+# 单说话人 TTS 训练
 
 首轮按编码器预训练、Mel 解码器训练与重合成、文本模型训练的顺序运行。两项下游任务都使用同一个冻结的 EMA 编码器检查点。见 [单说话人 TTS 设计记录](单说话人TTS设计记录.md)。
 
@@ -57,7 +11,7 @@ conda run -n hs python -m pip install -r tts/requirements.txt
 conda run -n hs python -m tts --help
 ```
 
-### 准备数据
+## 准备数据
 
 各阶段读取通用 JSONL 清单，每行对应一个已切好的单说话人 WAV 或 FLAC 片段。`audio` 可以是绝对路径，也可以相对于清单所在目录。`source` 是切分前的原始录音 ID，同一原始录音的所有片段只能进入同一个集合。阶段二要求 `text`，其余阶段只需要音频和来源。
 
@@ -67,7 +21,7 @@ conda run -n hs python -m tts --help
 
 带乐片段分别列入 `music-train.jsonl` 和 `music-val.jsonl`，干净片段分别列入 `clean-train.jsonl` 和 `clean-val.jsonl`。数据集按需解码、转单声道并重采样。Mel 数据集从同一片段生成 16 kHz 编码器输入和 24 kHz 频谱输入。真实语料接入时，可以让专用加载器直接构造 `tts.data.Clip`，交给现有 Dataset。
 
-### 运行训练
+## 运行训练
 
 三个训练命令默认加载项目中的 [模型配置](configs/model_config.json) 和 [训练配置](configs/training_config.json)。默认进行 1000 次优化器更新，每个微批次包含 4 条样本。下列示例在命令行传入清单路径和工作目录，也可以在训练配置里填写这些路径。
 
@@ -97,7 +51,7 @@ conda run -n hs --no-capture-output python -m tts train-text \
   --output-dir runs/text
 ```
 
-### 预训练伴奏增强
+## 预训练伴奏增强
 
 `pretrain` 可在训练时只给学生的 16 kHz 波形叠加独立伴奏；EMA 教师读取同一段原始录音，帧遮掩照常进行。验证使用原始录音，`train-text` 和 `train-mel` 沿用各自的原始监督目标。省略 `--background-manifest` 即运行无伴奏增强的基线。
 
@@ -118,7 +72,7 @@ conda run -n hs --no-capture-output python -m tts pretrain \
 
 `training_config.json` 和检查点记录生效的概率、信噪比范围和伴奏清单的 SHA-256。续训时使用内容相同的伴奏清单。该实验测试对新增伴奏的鲁棒性，教师目标仍含录音原有的背景音乐。
 
-### 指定模型和训练配置
+## 指定模型和训练配置
 
 修改项目的默认参数时，直接编辑 `configs/model_config.json` 和 `configs/training_config.json`。模型配置按训练命令分节。训练配置的 `common` 节适用于三个命令，同名阶段节覆盖公共值。用 `--model-config` 和 `--training-config` 可以分别指定实验配置。自定义 JSON 也可以是只包含当前阶段覆盖项的平铺对象，比如 `{"updates": 2000, "batch_size": 2}`。
 
@@ -141,13 +95,13 @@ conda run -n hs --no-capture-output python -m tts pretrain \
 
 `dim` 必须能被 `heads` 整除，`teacher_layers` 必须在 1 到 `layers` 之间。下游模型的 `acoustic_dim` 由冻结编码器确定，文本模型的 `vocab_size` 由训练集词表确定。
 
-### 归档与复用
+## 归档与复用
 
 训练初始化后，工作目录的 `input_configs/` 保存本次读取的两份 JSON 原件。工作目录根级的 `model_config.json` 和 `training_config.json` 保存实际生效的值，包括命令行覆盖、解析后的路径和派生字段。训练配置还会记录实际设备、清单 SHA-256 和续训检查点路径。可将根级的两份文件传给同一训练命令并指定新的 `--output-dir` 来复现实验。
 
 使用 `--resume` 时，模型结构和检查点记录的训练设置优先于项目默认配置。显式传入的模型参数必须与检查点一致，影响优化器进度和训练目标的参数也须保持一致。可以通过 `--training-config runs/encoder/training_config.json` 复用原运行的数据路径和运行选项，再用 `--resume runs/encoder/last.pt` 指定断点。续训成功初始化后会更新根级的配置；省略模型配置时会沿用已有的模型配置原件，若工作目录里没有原件则根据检查点写入模型配置。
 
-### 检查点与评估
+## 检查点与评估
 
 每次验证都会保存 `last.pt`。预训练要求学生和教师在等长验证音频上的同位置特征距离均达到 `--min-content-distance`（默认 `0.1`），才按遮掩帧验证 MSE 更新 `best.pt`。验证日志的 `content_check_passed` 表示是否通过此检查。日志也记录遮掩比例、平均跨度、教师目标和学生预测的标准差，以及导出表示统计。选择验证片段时应覆盖不同的语音内容。
 
@@ -165,7 +119,7 @@ conda run -n hs python -m tts synthesize \
   --text '你好，欢迎收听。' --output runs/tts.wav
 ```
 
-### 查看训练和推理图表
+## 查看训练和推理图表
 
 三个训练命令都会在 `--output-dir` 中实时追加 `train.log`，例如 `runs/encoder/train.log`。每次启动或续训都会写入时间和训练参数，训练期间的终端输出和 Python 异常堆栈也会写入该文件。排查训练问题时，可以把这个文件交给 AI 分析。
 
